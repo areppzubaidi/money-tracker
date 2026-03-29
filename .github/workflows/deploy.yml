@@ -30,7 +30,9 @@ jobs:
 
       - name: Get EC2 public IP
         id: ec2_ip
-        run: echo "ip=$(terraform -chdir=terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+        run: |
+         IP=$(terraform -chdir=terraform output -raw public_ip 2>/dev/null)
+         printf "ip=%s\n" "$IP" >> $GITHUB_OUTPUT
 
       # 2. Ansible: configure server
       - name: Install Ansible
