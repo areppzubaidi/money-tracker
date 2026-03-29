@@ -1,17 +1,57 @@
-name: Build and Deploy
+name: Full Pipeline
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 1. Terraform: provision EC2
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform Apply
+        id: tf_apply
+        run: terraform -chdir=terraform apply -auto-approve
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Get EC2 public IP
+        id: ec2_ip
+        run: echo "ip=$(terraform -chdir=terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+
+      # 2. Ansible: configure server
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
+      - name: Create inventory file
+        run: |
+          echo "[money-tracker]" > ansible/inventory.ini
+          echo "${{ steps.ec2_ip.outputs.ip }} ansible_user=ubuntu ansible_ssh_private_key_file=key.pem" >> ansible/inventory.ini
+
+      - name: Save EC2 private key
+        run: echo "${{ secrets.EC2_PRIVATE_KEY }}" > key.pem && chmod 600 key.pem
+
+      - name: Run Ansible playbook
+        run: ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+
+      # 3. Docker: build and push
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -29,10 +69,11 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/money-tracker:latest
 
+      # 4. Deploy the new container on EC2
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v0.1.5
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.ec2_ip.outputs.ip }}
           username: ubuntu
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
