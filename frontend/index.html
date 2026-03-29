@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Money Tracker</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Money Tracker</h1>
+        <form id="transaction-form">
+            <input type="text" id="description" placeholder="Description" required>
+            <input type="number" id="amount" placeholder="Amount" required>
+            <button type="submit">Add Transaction</button>
+        </form>
+        <h2>Transactions</h2>
+        <ul id="transaction-list"></ul>
+    </div>
+    <script>
+        const apiUrl = 'http://localhost:5001/api/transactions';
+        const form = document.getElementById('transaction-form');
+        const list = document.getElementById('transaction-list');
+
+        async function fetchTransactions() {
+            const res = await fetch(apiUrl);
+            const transactions = await res.json();
+            list.innerHTML = '';
+            transactions.forEach(t => {
+                const li = document.createElement('li');
+                li.textContent = `${t.description}: $${t.amount}`;
+                list.appendChild(li);
+            });
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const description = document.getElementById('description').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            await fetch(apiUrl, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({description, amount})
+            });
+            form.reset();
+            fetchTransactions();
+        });
+
+        fetchTransactions();
+    </script>
+</body>
+</html>

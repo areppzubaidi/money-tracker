@@ -1,0 +1,86 @@
+---
+- name: Configure Money Tracker server
+  hosts: money-tracker
+  become: yes
+  vars:
+    docker_image: "areppzubaidi/money-tracker:latest"
+    container_name: "money-tracker"
+    nginx_conf_src: "../nginx/default.conf"
+    nginx_conf_dest: "/etc/nginx/sites-available/default"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Install NGINX
+      apt:
+        name: nginx
+        state: present
+
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create web root directory
+      file:
+        path: /var/www/html
+        state: directory
+
+    - name: Copy frontend files
+      copy:
+        src: "../frontend/"
+        dest: "/var/www/html/"
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Pull Docker image
+      docker_image:
+        name: "{{ docker_image }}"
+        source: pull
+
+    - name: Run Docker container
+      docker_container:
+        name: "{{ container_name }}"
+        image: "{{ docker_image }}"
+        state: started
+        restart_policy: always
+        ports:
+          - "5000:5000"
+        env:
+          FLASK_ENV: "production"
+
+    - name: Copy NGINX configuration
+      copy:
+        src: "{{ nginx_conf_src }}"
+        dest: "{{ nginx_conf_dest }}"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart nginx
+
+    - name: Enable NGINX site
+      file:
+        src: "{{ nginx_conf_dest }}"
+        dest: "/etc/nginx/sites-enabled/default"
+        state: link
+
+    - name: Remove default site
+      file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+      ignore_errors: yes
+
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted

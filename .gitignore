@@ -1,0 +1,21 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+.terraform.lock.hcl
+
+# Python
+__pycache__/
+*.pyc
+
+# Environment
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
