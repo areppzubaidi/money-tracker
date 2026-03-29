@@ -21,18 +21,16 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
-      - name: Terraform Apply
+      - name: Terraform Apply & Capture IP
         id: tf_apply
-        run: terraform -chdir=terraform apply -auto-approve
+        run: |
+          terraform -chdir=terraform apply -auto-approve | tee tf_output.txt
+          # Extract public IP from Terraform output
+          IP=$(grep -oP 'public_ip\s*=\s*"\K[^"]+' tf_output.txt | head -1)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Get EC2 public IP
-        id: ec2_ip
-        run: |
-         IP=$(terraform -chdir=terraform output -raw public_ip 2>/dev/null)
-         printf "ip=%s\n" "$IP" >> $GITHUB_OUTPUT
 
       # 2. Ansible: configure server
       - name: Install Ansible
@@ -43,7 +41,7 @@ jobs:
       - name: Create inventory file
         run: |
           echo "[money-tracker]" > ansible/inventory.ini
-          echo "${{ steps.ec2_ip.outputs.ip }} ansible_user=ubuntu ansible_ssh_private_key_file=key.pem" >> ansible/inventory.ini
+          echo "${{ steps.tf_apply.outputs.ip }} ansible_user=ubuntu ansible_ssh_private_key_file=key.pem" >> ansible/inventory.ini
 
       - name: Save EC2 private key
         run: echo "${{ secrets.EC2_PRIVATE_KEY }}" > key.pem && chmod 600 key.pem
@@ -75,7 +73,7 @@ jobs:
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v0.1.5
         with:
-          host: ${{ steps.ec2_ip.outputs.ip }}
+          host: ${{ steps.tf_apply.outputs.ip }}
           username: ubuntu
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
